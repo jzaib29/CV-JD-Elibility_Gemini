@@ -10,10 +10,10 @@ st.markdown("Watch an AI Recruiter and AI Resume Writer negotiate to perfect you
 
 with st.sidebar:
     st.header("Settings")
-    api_key = st.text_input("Groq API Key", type="password")
-    if api_key:
-        os.environ["GROQ_API_KEY"] = api_key
-        
+    # Fetch from Streamlit secrets if deployed, otherwise fallback to sidebar text input
+    secret_key = st.secrets.get("GROQ_API_KEY", "") if hasattr(st, "secrets") else ""
+    user_key = st.text_input("Groq API Key", value=secret_key, type="password")
+    
     target_score = st.slider("Target ATS Score", min_value=5, max_value=10, value=8)
     max_loops = st.slider("Max Iterations", min_value=1, max_value=5, value=3)
     st.markdown("---")
@@ -28,11 +28,11 @@ with col2:
     jd_text = st.text_area("Paste Target JD Here", height=150)
 
 if st.button("Start Adversarial Loop", type="primary", use_container_width=True):
-    if not os.environ.get("GROQ_API_KEY"):
+    if not user_key:
         st.error("Please enter your Groq API Key in the sidebar.")
     elif uploaded_file and jd_text:
         pdf_reader = PyPDF2.PdfReader(uploaded_file)
-        cv_text = "".join(page.extract_text() for page in pdf_reader.pages)
+        cv_text = "".join(page.extract_text() or "" for page in pdf_reader.pages)
         
         st.markdown("### Live Agent Logs")
         log_container = st.container(height=300, border=True)
@@ -45,6 +45,7 @@ if st.button("Start Adversarial Loop", type="primary", use_container_width=True)
             result = optimize_cv_adversarial(
                 cv_text=cv_text, 
                 jd_text=jd_text, 
+                api_key=user_key,
                 target_score=target_score, 
                 max_iterations=max_loops,
                 log_callback=write_log
