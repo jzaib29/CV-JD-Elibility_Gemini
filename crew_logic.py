@@ -9,9 +9,12 @@ class EvaluationResult(BaseModel):
     flagged_sections: list[str] = Field(description="Exact sections or bullet points to rewrite")
 
 def optimize_cv_adversarial(cv_text: str, jd_text: str, target_score: int = 8, max_iterations: int = 3, log_callback=None):
-    # Initialize 2026 Groq integration
+    import os from crewai import LLM
+    
+    # Initialize OpenAI's GPT-OSS-120B hosted on Groq
     groq_llm = LLM(
-        model="openai/gpt-oss-120b",
+        model="groq/openai/gpt-oss-120b",
+        api_key=os.environ.get("GROQ_API_KEY"),
         temperature=0.1 
     )
 
