@@ -2,7 +2,8 @@ import os
 import re
 import json
 import time
-from crewai import Agent, Task, Crew, LLM
+from crewai import Agent, Task, Crew
+from langchain_groq import ChatGroq
 
 def clean_text(text: str) -> str:
     """Removes excess whitespace to save tokens."""
@@ -11,13 +12,11 @@ def clean_text(text: str) -> str:
 def extract_json_payload(raw_text: str) -> dict:
     """Robustly extracts JSON from raw LLM text without requiring tool-calling."""
     try:
-        # Match outermost curly braces
         match = re.search(r'\{.*\}', raw_text, re.DOTALL)
         if match:
             return json.loads(match.group(0))
         return json.loads(raw_text)
     except Exception:
-        # Fallback regex if formatting was slightly malformed
         score_match = re.search(r'"score":\s*(\d+)', raw_text)
         feedback_match = re.search(r'"feedback":\s*"([^"]+)"', raw_text)
         return {
@@ -27,12 +26,12 @@ def extract_json_payload(raw_text: str) -> dict:
         }
 
 def optimize_cv_adversarial(cv_text: str, jd_text: str, target_score: int = 8, max_iterations: int = 3, log_callback=None):
-    # Compress inputs to stay under the 8,000 TPM rate limit
     cv_clean = clean_text(cv_text)
     jd_clean = clean_text(jd_text)
 
-    main_llm = LLM(
-        model="groq/openai/gpt-oss-20b",
+    # THE FIX: Use ChatGroq instead of LiteLLM to bypass the cache_breakpoint bug
+    main_llm = ChatGroq(
+        model="openai/gpt-oss-20b", 
         api_key=os.environ.get("GROQ_API_KEY"),
         temperature=0.1
     )
@@ -61,7 +60,6 @@ def optimize_cv_adversarial(cv_text: str, jd_text: str, target_score: int = 8, m
         if log_callback:
             log_callback(f"**Iteration {iteration}**: Screener is evaluating the CV...")
 
-        # Prompt for raw JSON directly—no CrewAI tool-calling required
         eval_task = Task(
             description=(
                 f"Evaluate this CV against this Job Description.\n\n"
@@ -101,7 +99,7 @@ def optimize_cv_adversarial(cv_text: str, jd_text: str, target_score: int = 8, m
 
         if log_callback:
             log_callback("⏳ Pausing 10s to respect Groq TPM rate limits before editing...")
-        time.sleep(10)  # Pacing pause to stay within the 8,000 TPM window
+        time.sleep(10)
 
         if log_callback:
             log_callback("⚙️ Editor is rewriting flagged sections based on feedback...")
@@ -122,8 +120,6 @@ def optimize_cv_adversarial(cv_text: str, jd_text: str, target_score: int = 8, m
 
         current_cv = update_output.raw
         iteration += 1
-
-        # Pause before evaluating again
         time.sleep(10)
 
     return {
