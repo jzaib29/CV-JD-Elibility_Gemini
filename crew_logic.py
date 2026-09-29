@@ -28,14 +28,13 @@ def optimize_cv_adversarial(cv_text: str, jd_text: str, api_key: str, target_sco
     cv_clean = clean_text(cv_text)
     jd_clean = clean_text(jd_text)
 
-    # CRUCIAL FIX: OpenAI v1+ uses OPENAI_BASE_URL (not OPENAI_API_BASE)
     groq_endpoint = "https://api.groq.com/openai/v1"
     os.environ["OPENAI_BASE_URL"] = groq_endpoint
     os.environ["OPENAI_API_KEY"] = api_key
 
-    # Initialize LLM with explicit base_url and api_key
+    # THE FIX: First "openai/" selects the provider; remaining "openai/gpt-oss-20b" is sent to Groq
     main_llm = LLM(
-        model="openai/gpt-oss-20b",
+        model="openai/openai/gpt-oss-20b",
         base_url=groq_endpoint,
         api_key=api_key,
         temperature=0.1
