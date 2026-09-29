@@ -10,15 +10,14 @@ st.markdown("Watch an AI Recruiter and AI Resume Writer negotiate to perfect you
 
 with st.sidebar:
     st.header("Settings")
-    # Swapped variable and UI text to target OpenAI instead of Groq
-    api_key = st.text_input("OpenAI API Key", type="password")
+    api_key = st.text_input("Groq API Key", type="password")
     if api_key:
-        os.environ["OPENAI_API_KEY"] = api_key
+        os.environ["GROQ_API_KEY"] = api_key
         
     target_score = st.slider("Target ATS Score", min_value=5, max_value=10, value=8)
     max_loops = st.slider("Max Iterations", min_value=1, max_value=5, value=3)
     st.markdown("---")
-    st.caption("Powered by CrewAI & gpt-oss-120b")
+    st.caption("Powered by CrewAI & gpt-oss-120b on Groq")
 
 col1, col2 = st.columns(2)
 
@@ -29,8 +28,8 @@ with col2:
     jd_text = st.text_area("Paste Target JD Here", height=150)
 
 if st.button("Start Adversarial Loop", type="primary", use_container_width=True):
-    if not os.environ.get("OPENAI_API_KEY"):
-        st.error("Please enter your OpenAI API Key in the sidebar.")
+    if not os.environ.get("GROQ_API_KEY"):
+        st.error("Please enter your Groq API Key in the sidebar.")
     elif uploaded_file and jd_text:
         pdf_reader = PyPDF2.PdfReader(uploaded_file)
         cv_text = "".join(page.extract_text() for page in pdf_reader.pages)
