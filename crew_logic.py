@@ -1,67 +1,91 @@
 import os
+import re
 import json
-from pydantic import BaseModel, Field
+import time
 from crewai import Agent, Task, Crew, LLM
 
-class EvaluationResult(BaseModel):
-    score: int = Field(description="The ATS compatibility score from 1 to 10")
-    feedback: str = Field(description="Specific feedback on what is missing or needs improvement")
-    flagged_sections: list[str] = Field(description="Exact sections or bullet points to rewrite")
+def clean_text(text: str) -> str:
+    """Removes excess whitespace to save tokens."""
+    return re.sub(r'\s+', ' ', text).strip()
+
+def extract_json_payload(raw_text: str) -> dict:
+    """Robustly extracts JSON from raw LLM text without requiring tool-calling."""
+    try:
+        # Match outermost curly braces
+        match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+        if match:
+            return json.loads(match.group(0))
+        return json.loads(raw_text)
+    except Exception:
+        # Fallback regex if formatting was slightly malformed
+        score_match = re.search(r'"score":\s*(\d+)', raw_text)
+        feedback_match = re.search(r'"feedback":\s*"([^"]+)"', raw_text)
+        return {
+            "score": int(score_match.group(1)) if score_match else 0,
+            "feedback": feedback_match.group(1) if feedback_match else "Could not extract feedback.",
+            "flagged_sections": []
+        }
 
 def optimize_cv_adversarial(cv_text: str, jd_text: str, target_score: int = 8, max_iterations: int = 3, log_callback=None):
-    
-    # THE FIX: Use the 'groq/' prefix so CrewAI knows to use Groq's native integration,
-    # avoiding the proprietary .beta.parse endpoints that cause the 404 error.
+    # Compress inputs to stay under the 8,000 TPM rate limit
+    cv_clean = clean_text(cv_text)
+    jd_clean = clean_text(jd_text)
+
     main_llm = LLM(
-        model="groq/openai/gpt-oss-20b", 
+        model="groq/openai/gpt-oss-20b",
         api_key=os.environ.get("GROQ_API_KEY"),
-        temperature=0.1 
+        temperature=0.1
     )
 
     screener = Agent(
         role="Senior ATS Evaluator",
-        goal="Strictly evaluate the CV against the JD and output a JSON evaluation.",
-        backstory="You are a ruthless technical recruiter. You only accept perfect matches. You never inflate scores.",
+        goal="Strictly evaluate the CV against the JD and return raw JSON.",
+        backstory="You are a ruthless technical recruiter. You only accept perfect matches.",
         llm=main_llm,
         verbose=False
     )
 
     tailorer = Agent(
         role="Targeted Resume Engineer",
-        goal="Rewrite the flagged sections of the CV to address the recruiter's feedback.",
-        backstory="You surgically update specific bullet points to maximize ATS visibility without altering the document structure.",
+        goal="Rewrite the flagged sections of the CV to address feedback.",
+        backstory="You surgically update specific bullet points to maximize ATS visibility.",
         llm=main_llm,
         verbose=False
     )
 
-    current_cv = cv_text
+    current_cv = cv_clean
     iteration = 1
-    best_evaluation = None
+    best_evaluation = {}
 
     while iteration <= max_iterations:
         if log_callback:
             log_callback(f"**Iteration {iteration}**: Screener is evaluating the CV...")
-        
+
+        # Prompt for raw JSON directly—no CrewAI tool-calling required
         eval_task = Task(
-            description=f"Evaluate this CV:\n{current_cv}\n\nAgainst this JD:\n{jd_text}\n\nBe ruthless.",
-            expected_output="JSON containing score, feedback, and flagged_sections.",
-            output_json=EvaluationResult,
+            description=(
+                f"Evaluate this CV against this Job Description.\n\n"
+                f"CV:\n{current_cv}\n\n"
+                f"JD:\n{jd_clean}\n\n"
+                f"Respond with ONLY a raw JSON object (no markdown ticks, no commentary) with these exact keys:\n"
+                f"{{\n"
+                f'  "score": <integer from 1 to 10>,\n'
+                f'  "feedback": "<concise feedback on missing skills/experience>",\n'
+                f'  "flagged_sections": ["<specific bullet point or section to rewrite>"]\n'
+                f"}}"
+            ),
+            expected_output="A raw JSON object with keys score, feedback, and flagged_sections.",
             agent=screener
         )
-        
+
         eval_crew = Crew(agents=[screener], tasks=[eval_task])
         eval_output = eval_crew.kickoff()
-        
-        try:
-            parsed_eval = eval_output.json_dict
-            current_score = parsed_eval.get('score', 0)
-            feedback = parsed_eval.get('feedback', '')
-        except Exception:
-            current_score = 0
-            feedback = "Failed to parse feedback."
 
+        parsed_eval = extract_json_payload(eval_output.raw)
+        current_score = parsed_eval.get("score", 0)
+        feedback = parsed_eval.get("feedback", "No feedback provided.")
         best_evaluation = parsed_eval
-        
+
         if log_callback:
             log_callback(f"**Iteration {iteration} Score**: {current_score}/10\n\n*Feedback*: {feedback}")
 
@@ -69,30 +93,42 @@ def optimize_cv_adversarial(cv_text: str, jd_text: str, target_score: int = 8, m
             if log_callback:
                 log_callback("✅ Target score achieved!")
             break
-            
+
         if iteration == max_iterations:
             if log_callback:
                 log_callback("⚠️ Max iterations reached.")
             break
 
         if log_callback:
+            log_callback("⏳ Pausing 10s to respect Groq TPM rate limits before editing...")
+        time.sleep(10)  # Pacing pause to stay within the 8,000 TPM window
+
+        if log_callback:
             log_callback("⚙️ Editor is rewriting flagged sections based on feedback...")
 
         update_task = Task(
-            description=f"Revise the following CV based on this strict feedback: {feedback}\n\nCurrent CV:\n{current_cv}",
-            expected_output="The fully updated CV text. Do not output anything else.",
+            description=(
+                f"Revise the following CV based on this feedback:\n{feedback}\n\n"
+                f"Flagged items: {parsed_eval.get('flagged_sections', [])}\n\n"
+                f"Current CV:\n{current_cv}\n\n"
+                f"Provide the complete revised CV text only."
+            ),
+            expected_output="The revised CV text.",
             agent=tailorer
         )
-        
+
         update_crew = Crew(agents=[tailorer], tasks=[update_task])
         update_output = update_crew.kickoff()
-        
+
         current_cv = update_output.raw
         iteration += 1
 
+        # Pause before evaluating again
+        time.sleep(10)
+
     return {
-        "final_score": best_evaluation.get('score', 0) if best_evaluation else 0,
-        "final_feedback": best_evaluation.get('feedback', '') if best_evaluation else '',
+        "final_score": best_evaluation.get("score", 0),
+        "final_feedback": best_evaluation.get("feedback", ""),
         "updated_cv": current_cv,
         "iterations_used": min(iteration, max_iterations)
     }
