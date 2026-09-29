@@ -2,8 +2,7 @@ import os
 import re
 import json
 import time
-from crewai import Agent, Task, Crew
-from langchain_groq import ChatGroq
+from crewai import Agent, Task, Crew, LLM
 
 def clean_text(text: str) -> str:
     """Removes excess whitespace to save tokens."""
@@ -29,11 +28,13 @@ def optimize_cv_adversarial(cv_text: str, jd_text: str, target_score: int = 8, m
     cv_clean = clean_text(cv_text)
     jd_clean = clean_text(jd_text)
 
-    # THE FIX: Use ChatGroq. This forces the request to Groq's API 
-    # regardless of the "openai/" prefix in the model name.
-    main_llm = ChatGroq(
+    # THE FIX: Trick CrewAI's native OpenAI router into hitting Groq's servers.
+    # This satisfies the internal requirement for an OpenAI key and completely bypasses LiteLLM.
+    os.environ["OPENAI_API_KEY"] = os.environ.get("GROQ_API_KEY", "missing_key")
+    os.environ["OPENAI_API_BASE"] = "https://api.groq.com/openai/v1"
+
+    main_llm = LLM(
         model="openai/gpt-oss-20b", 
-        api_key=os.environ.get("GROQ_API_KEY"),
         temperature=0.1
     )
 
