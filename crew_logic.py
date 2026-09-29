@@ -24,17 +24,20 @@ def extract_json_payload(raw_text: str) -> dict:
             "flagged_sections": []
         }
 
-def optimize_cv_adversarial(cv_text: str, jd_text: str, target_score: int = 8, max_iterations: int = 3, log_callback=None):
+def optimize_cv_adversarial(cv_text: str, jd_text: str, api_key: str, target_score: int = 8, max_iterations: int = 3, log_callback=None):
     cv_clean = clean_text(cv_text)
     jd_clean = clean_text(jd_text)
 
-    # THE FIX: Trick CrewAI's native OpenAI router into hitting Groq's servers.
-    # This satisfies the internal requirement for an OpenAI key and completely bypasses LiteLLM.
-    os.environ["OPENAI_API_KEY"] = os.environ.get("GROQ_API_KEY", "missing_key")
-    os.environ["OPENAI_API_BASE"] = "https://api.groq.com/openai/v1"
+    # CRUCIAL FIX: OpenAI v1+ uses OPENAI_BASE_URL (not OPENAI_API_BASE)
+    groq_endpoint = "https://api.groq.com/openai/v1"
+    os.environ["OPENAI_BASE_URL"] = groq_endpoint
+    os.environ["OPENAI_API_KEY"] = api_key
 
+    # Initialize LLM with explicit base_url and api_key
     main_llm = LLM(
-        model="openai/gpt-oss-20b", 
+        model="openai/gpt-oss-20b",
+        base_url=groq_endpoint,
+        api_key=api_key,
         temperature=0.1
     )
 
@@ -100,7 +103,7 @@ def optimize_cv_adversarial(cv_text: str, jd_text: str, target_score: int = 8, m
             break
 
         if log_callback:
-            log_callback("⏳ Pausing 10s to respect Groq TPM rate limits before editing...")
+            log_callback("⏳ Pausing 10s to respect Groq TPM limits before editing...")
         time.sleep(10)
 
         if log_callback:
