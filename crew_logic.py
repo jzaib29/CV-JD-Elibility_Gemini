@@ -11,7 +11,7 @@ class EvaluationResult(BaseModel):
 def optimize_cv_adversarial(cv_text: str, jd_text: str, target_score: int = 8, max_iterations: int = 3, log_callback=None):
     # Initialize 2026 Groq integration
     groq_llm = LLM(
-        model="groq/llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         temperature=0.1 
     )
 
