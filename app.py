@@ -17,7 +17,7 @@ with st.sidebar:
     target_score = st.slider("Target ATS Score", min_value=5, max_value=10, value=8)
     max_loops = st.slider("Max Iterations", min_value=1, max_value=5, value=3)
     st.markdown("---")
-    st.caption("Powered by CrewAI & gpt-oss-120b on Groq")
+    st.caption("Powered by CrewAI & GPT OSS 20B on Groq")
 
 col1, col2 = st.columns(2)
 
