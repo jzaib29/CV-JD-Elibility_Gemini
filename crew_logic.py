@@ -29,7 +29,8 @@ def optimize_cv_adversarial(cv_text: str, jd_text: str, target_score: int = 8, m
     cv_clean = clean_text(cv_text)
     jd_clean = clean_text(jd_text)
 
-    # THE FIX: Use ChatGroq instead of LiteLLM to bypass the cache_breakpoint bug
+    # THE FIX: Use ChatGroq. This forces the request to Groq's API 
+    # regardless of the "openai/" prefix in the model name.
     main_llm = ChatGroq(
         model="openai/gpt-oss-20b", 
         api_key=os.environ.get("GROQ_API_KEY"),
@@ -120,7 +121,9 @@ def optimize_cv_adversarial(cv_text: str, jd_text: str, target_score: int = 8, m
 
         current_cv = update_output.raw
         iteration += 1
-        time.sleep(10)
+        
+        if iteration <= max_iterations:
+            time.sleep(10)
 
     return {
         "final_score": best_evaluation.get("score", 0),
