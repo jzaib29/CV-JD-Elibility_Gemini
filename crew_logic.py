@@ -10,11 +10,11 @@ class EvaluationResult(BaseModel):
 
 def optimize_cv_adversarial(cv_text: str, jd_text: str, target_score: int = 8, max_iterations: int = 3, log_callback=None):
     
-    # THE FIX: Force CrewAI to route the OpenAI-format request to Groq's servers
+    # THE FIX: Use the 'groq/' prefix so CrewAI knows to use Groq's native integration,
+    # avoiding the proprietary .beta.parse endpoints that cause the 404 error.
     main_llm = LLM(
-        model="openai/gpt-oss-20b", 
+        model="groq/openai/gpt-oss-20b", 
         api_key=os.environ.get("GROQ_API_KEY"),
-        base_url="https://api.groq.com/openai/v1", # Explicitly point to Groq
         temperature=0.1 
     )
 
