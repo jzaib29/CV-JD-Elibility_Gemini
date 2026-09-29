@@ -12,7 +12,7 @@ def optimize_cv_adversarial(cv_text: str, jd_text: str, target_score: int = 8, m
     
     # THE FIX: Force CrewAI to route the OpenAI-format request to Groq's servers
     main_llm = LLM(
-        model="openai/gpt-oss-120b", 
+        model="openai/gpt-oss-20b", 
         api_key=os.environ.get("GROQ_API_KEY"),
         base_url="https://api.groq.com/openai/v1", # Explicitly point to Groq
         temperature=0.1 
