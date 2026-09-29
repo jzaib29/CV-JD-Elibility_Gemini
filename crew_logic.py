@@ -1,3 +1,4 @@
+import os
 import json
 from pydantic import BaseModel, Field
 from crewai import Agent, Task, Crew, LLM
@@ -9,12 +10,10 @@ class EvaluationResult(BaseModel):
     flagged_sections: list[str] = Field(description="Exact sections or bullet points to rewrite")
 
 def optimize_cv_adversarial(cv_text: str, jd_text: str, target_score: int = 8, max_iterations: int = 3, log_callback=None):
-    import os from crewai import LLM
-    
-    # Initialize OpenAI's GPT-OSS-120B hosted on Groq
-    groq_llm = LLM(
-        model="groq/openai/gpt-oss-120b",
-        api_key=os.environ.get("GROQ_API_KEY"),
+    # Initialize the specific gpt-oss-120b model and explicitly pass the key
+    main_llm = LLM(
+        model="openai/gpt-oss-120b",
+        api_key=os.environ.get("OPENAI_API_KEY"),
         temperature=0.1 
     )
 
@@ -22,7 +21,7 @@ def optimize_cv_adversarial(cv_text: str, jd_text: str, target_score: int = 8, m
         role="Senior ATS Evaluator",
         goal="Strictly evaluate the CV against the JD and output a JSON evaluation.",
         backstory="You are a ruthless technical recruiter. You only accept perfect matches. You never inflate scores.",
-        llm=groq_llm,
+        llm=main_llm,
         verbose=False
     )
 
@@ -30,7 +29,7 @@ def optimize_cv_adversarial(cv_text: str, jd_text: str, target_score: int = 8, m
         role="Targeted Resume Engineer",
         goal="Rewrite the flagged sections of the CV to address the recruiter's feedback.",
         backstory="You surgically update specific bullet points to maximize ATS visibility without altering the document structure.",
-        llm=groq_llm,
+        llm=main_llm,
         verbose=False
     )
 
